@@ -6,7 +6,7 @@ from PIL import Image
 from pathlib import Path
 
 st.set_page_config(
-    page_title= DriveGuard AI: AI-Powered Driver Drowsiness Detection & Safety Analytics
+    page_title= "DriveGuard AI | Drowsiness Detection",
     page_icon="🚗",
     layout="wide",
     initial_sidebar_state="collapsed",

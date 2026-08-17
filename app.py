@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import tensorflow as tf
 import numpy as np
@@ -696,25 +695,4 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-
-# ============================================================
-# FOOTER
-# ============================================================
-
-st.markdown(
-    """
-    <div class="footer">
-
-        <b>DriveGuard AI</b><br>
-
-        AI Agent for Driver Drowsiness Detection and
-        Intelligent Road Safety Assistance<br>
-
-        Powered by EfficientNet-B0
-
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-```
 

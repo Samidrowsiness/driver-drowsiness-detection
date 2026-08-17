@@ -3,134 +3,731 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 from pathlib import Path
+import cv2
 
-st.set_page_config(page_title="DriveGuard AI", page_icon="🚗", layout="wide")
+# ============================================================
+# PAGE CONFIG
+# ============================================================
+
+st.set_page_config(
+    page_title="DriveGuard AI",
+    page_icon="🚗",
+    layout="wide"
+)
+
+# ============================================================
+# SETTINGS
+# ============================================================
 
 MODEL_PATH = Path(__file__).parent / "EfficientNet_B0.keras"
-CLASSES = ["Closed", "Open", "no_yawn", "yawn"]
+
+# IMPORTANT:
+# These must match the class order used during training.
+CLASS_NAMES = ["Closed", "Open", "no_yawn", "yawn"]
+
 IMG_SIZE = (224, 224)
+
+# ============================================================
+# CUSTOM CSS
+# ============================================================
 
 st.markdown("""
 <style>
-.block-container{max-width:1250px;padding:1.5rem 2rem 3rem}
-.hero{padding:32px 36px;border-radius:24px;background:linear-gradient(135deg,#0f172a,#1e3a5f,#0f766e);color:white;margin-bottom:24px}
-.hero h1{font-size:2.5rem;margin:0 0 8px}
-.hero p{margin:5px 0;color:#dbeafe}
-.section{padding:22px;border:1px solid #dbe4ef;border-radius:20px;background:#fff;margin:18px 0}
-.footer{text-align:center;color:#64748b;padding:25px}
+
+.block-container {
+    max-width: 1250px;
+    padding: 1.5rem 2rem 3rem;
+}
+
+.hero {
+    padding: 38px;
+    border-radius: 24px;
+    background: linear-gradient(
+        135deg,
+        #0f172a,
+        #1e3a5f,
+        #0f766e
+    );
+    color: white;
+    margin-bottom: 25px;
+}
+
+.hero h1 {
+    font-size: 2.5rem;
+    margin-bottom: 8px;
+}
+
+.hero p {
+    color: #dbeafe;
+    font-size: 1.05rem;
+}
+
+.section {
+    padding: 25px;
+    border: 1px solid #dbe4ef;
+    border-radius: 20px;
+    background: white;
+    margin: 20px 0;
+}
+
+.result-box {
+    padding: 20px;
+    border-radius: 16px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.footer {
+    text-align: center;
+    color: #64748b;
+    padding: 30px;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
+# ============================================================
+# LOAD MODEL
+# ============================================================
+
 @st.cache_resource(show_spinner="Loading EfficientNet-B0...")
 def load_model():
-    return tf.keras.models.load_model(MODEL_PATH, compile=False)
+
+    return tf.keras.models.load_model(
+        MODEL_PATH,
+        compile=False
+    )
+
 
 model = None
 model_error = None
+
 if MODEL_PATH.exists():
+
     try:
         model = load_model()
+
     except Exception as e:
+
         model_error = str(e)
+
+# ============================================================
+# FACE DETECTOR
+# ============================================================
+
+@st.cache_resource
+def load_face_detector():
+
+    cascade_path = cv2.data.haarcascades + \
+                   "haarcascade_frontalface_default.xml"
+
+    return cv2.CascadeClassifier(cascade_path)
+
+
+face_detector = load_face_detector()
+
+# ============================================================
+# FACE DETECTION FUNCTION
+# ============================================================
+
+def detect_faces(image):
+
+    image_array = np.array(image)
+
+    gray = cv2.cvtColor(
+        image_array,
+        cv2.COLOR_RGB2GRAY
+    )
+
+    faces = face_detector.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(80, 80)
+    )
+
+    return faces
+
+
+# ============================================================
+# FACE CROP FUNCTION
+# ============================================================
+
+def get_largest_face(image, faces):
+
+    if len(faces) == 0:
+        return None
+
+    # Select largest detected face
+    largest = max(
+        faces,
+        key=lambda box: box[2] * box[3]
+    )
+
+    x, y, w, h = largest
+
+    # Add small margin around face
+    margin_x = int(w * 0.15)
+    margin_y = int(h * 0.15)
+
+    x1 = max(0, x - margin_x)
+    y1 = max(0, y - margin_y)
+
+    x2 = min(image.width, x + w + margin_x)
+    y2 = min(image.height, y + h + margin_y)
+
+    face_crop = image.crop(
+        (x1, y1, x2, y2)
+    )
+
+    return face_crop
+
+
+# ============================================================
+# PREDICTION FUNCTION
+# ============================================================
+
+def predict_drowsiness(face_image):
+
+    resized = face_image.resize(
+        IMG_SIZE
+    )
+
+    image_array = np.asarray(
+        resized,
+        dtype=np.float32
+    )
+
+    image_array = np.expand_dims(
+        image_array,
+        axis=0
+    )
+
+    probabilities = model.predict(
+        image_array,
+        verbose=0
+    )[0]
+
+    prediction_index = int(
+        np.argmax(probabilities)
+    )
+
+    prediction = CLASS_NAMES[
+        prediction_index
+    ]
+
+    confidence = float(
+        probabilities[prediction_index]
+    )
+
+    return prediction, confidence, probabilities
+
+
+# ============================================================
+# HERO
+# ============================================================
 
 st.markdown("""
 <div class="hero">
+
 <h1>🚗 DriveGuard AI</h1>
-<p>AI-Powered Driver Drowsiness Detection &amp; Safety Analytics</p>
-<p><b>Detection • Model Performance Comparison • Intelligent Road Safety Assistance</b></p>
+
+<p>
+AI Agent for Driver Drowsiness Detection and
+Intelligent Road Safety Assistance
+</p>
+
+<p>
+<b>
+EfficientNet-B0 • Face Detection • Drowsiness Analysis
+</b>
+</p>
+
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="section">', unsafe_allow_html=True)
-st.header("🎯 Problem Statement")
-st.write("**AI Agent for Driver Drowsiness Detection and Intelligent Road Safety Assistance**")
-st.write("Driver drowsiness is an important road-safety concern. This project aims to develop an AI-powered system that identifies visual signs of drowsiness from driver eye and yawning patterns and provides an early safety warning. Multiple deep-learning models are evaluated to identify an effective approach for the detection task.")
-st.subheader("🤖 Models Used")
-m1, m2, m3 = st.columns(3)
-m1.metric("Model 1", "CNN")
-m2.metric("Model 2", "MobileNetV3")
-m3.metric("Model 3", "EfficientNet-B0")
-st.subheader("🛡️ Intelligent Road Safety Assistance")
-st.write("When drowsiness-related visual patterns are detected, the system can display an awareness message recommending that the driver take a safe break rather than continue driving while tired.")
-st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="section">', unsafe_allow_html=True)
-st.header("🔍 Drowsiness Detection")
-st.write("Upload an image or use your camera to run the EfficientNet-B0 model.")
+# ============================================================
+# PROBLEM STATEMENT
+# ============================================================
+
+st.markdown(
+    '<div class="section">',
+    unsafe_allow_html=True
+)
+
+st.header("🎯 Problem Statement")
+
+st.write(
+    "**AI Agent for Driver Drowsiness Detection and "
+    "Intelligent Road Safety Assistance**"
+)
+
+st.write(
+    "The objective of this project is to develop an AI-powered "
+    "driver monitoring system that identifies visual signs of "
+    "drowsiness and provides an early road-safety warning. "
+    "The system uses EfficientNet-B0 to analyze driver eye and "
+    "yawning patterns."
+)
+
+st.subheader("🤖 Model Used")
+
+col1, col2, col3 = st.columns(3)
+
+col1.metric(
+    "Deep Learning Model",
+    "EfficientNet-B0"
+)
+
+col2.metric(
+    "Input Resolution",
+    "224 × 224"
+)
+
+col3.metric(
+    "Classes",
+    "4"
+)
+
+st.subheader("🛡️ Intelligent Road Safety Assistance")
+
+st.write(
+    "The system first checks whether a driver face is visible. "
+    "If a face is detected, the system analyzes the face region "
+    "for drowsiness-related classes. If no face is detected, "
+    "the system avoids making an unreliable drowsiness prediction."
+)
+
+st.markdown(
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# MODEL STATUS
+# ============================================================
 
 if model is None:
-    st.error("EfficientNet_B0.keras could not be loaded.")
+
+    st.error(
+        "❌ EfficientNet_B0.keras could not be loaded."
+    )
+
+    st.info(
+        "Make sure EfficientNet_B0.keras is in the "
+        "same GitHub folder as app.py."
+    )
+
     if model_error:
-        with st.expander("Technical error"):
+
+        with st.expander(
+            "Technical error"
+        ):
+
             st.code(model_error)
-    st.info("Keep EfficientNet_B0.keras in the same GitHub folder as app.py.")
-else:
-    input_col, result_col = st.columns([1, 1], gap="large")
-    with input_col:
-        source = st.radio("Choose input method", ["📁 Upload Image", "📷 Camera"], horizontal=True)
+
+
+# ============================================================
+# DROWSINESS DETECTION
+# ============================================================
+
+st.markdown(
+    '<div class="section">',
+    unsafe_allow_html=True
+)
+
+st.header("🔍 Driver Drowsiness Detection")
+
+st.write(
+    "Upload a driver image or use the camera."
+)
+
+if model is not None:
+
+    left, right = st.columns(
+        [1, 1],
+        gap="large"
+    )
+
+    with left:
+
+        input_type = st.radio(
+            "Select input",
+            [
+                "📁 Upload Image",
+                "📷 Camera"
+            ],
+            horizontal=True
+        )
+
         image = None
-        if source == "📁 Upload Image":
-            uploaded = st.file_uploader("Choose JPG, JPEG or PNG", type=["jpg", "jpeg", "png"])
-            if uploaded:
-                image = Image.open(uploaded).convert("RGB")
+
+        if input_type == "📁 Upload Image":
+
+            uploaded_file = st.file_uploader(
+                "Upload driver image",
+                type=[
+                    "jpg",
+                    "jpeg",
+                    "png"
+                ]
+            )
+
+            if uploaded_file:
+
+                image = Image.open(
+                    uploaded_file
+                ).convert("RGB")
+
         else:
-            captured = st.camera_input("Take a picture")
-            if captured:
-                image = Image.open(captured).convert("RGB")
+
+            camera_image = st.camera_input(
+                "Take a driver image"
+            )
+
+            if camera_image:
+
+                image = Image.open(
+                    camera_image
+                ).convert("RGB")
+
         if image:
-            st.image(image, caption="Input image", use_container_width=True)
-        else:
-            st.info("👆 Add an image above to start detection.")
-    with result_col:
-        st.subheader("AI Detection Result")
+
+            st.image(
+                image,
+                caption="Input image",
+                use_container_width=True
+            )
+
+    with right:
+
+        st.subheader(
+            "🧠 AI Detection Result"
+        )
+
         if image:
-            resized = image.resize(IMG_SIZE)
-            x = np.expand_dims(np.asarray(resized, dtype=np.float32), 0)
-            probs = model.predict(x, verbose=0)[0]
-            idx = int(np.argmax(probs))
-            label = CLASSES[idx]
-            confidence = float(probs[idx])
-            if label in ["Closed", "yawn"]:
-                st.error(f"⚠️ Possible drowsiness sign: {label}")
-                st.warning("If you are tired while driving, stop somewhere safe and take a break.")
+
+            faces = detect_faces(image)
+
+            # ------------------------------------------------
+            # NO FACE
+            # ------------------------------------------------
+
+            if len(faces) == 0:
+
+                st.warning(
+                    "⚠️ No driver face detected."
+                )
+
+                st.info(
+                    "Please provide a clear image "
+                    "containing the driver's face."
+                )
+
+                st.caption(
+                    "Traffic signs, roads, vehicles and "
+                    "other non-face images are not classified "
+                    "as drowsiness."
+                )
+
+            # ------------------------------------------------
+            # FACE DETECTED
+            # ------------------------------------------------
+
             else:
-                st.success(f"✅ Awake-related class predicted: {label}")
-            a, b = st.columns(2)
-            a.metric("Prediction", label)
-            b.metric("Confidence", f"{confidence*100:.2f}%")
-            st.subheader("Prediction Probabilities")
-            for name, p in sorted(zip(CLASSES, probs), key=lambda item: item[1], reverse=True):
-                st.write(f"**{name}** — {p*100:.2f}%")
-                st.progress(float(p))
-st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="section">', unsafe_allow_html=True)
-st.header("📊 Model Performance Comparison")
-st.write("Reported evaluation results for the three models used in the project.")
-c1, c2, c3 = st.columns(3)
-c1.metric("CNN", "72.29%")
-c2.metric("MobileNetV3-Small", "84.53%")
-c3.metric("🏆 EfficientNet-B0", "90.53%")
-st.table({
-    "Model": ["CNN", "MobileNetV3-Small", "EfficientNet-B0"],
-    "Accuracy": ["72.29%", "84.53%", "90.53%"],
-    "Precision": ["72.86%", "85.79%", "91.19%"],
-    "Recall": ["72.29%", "84.53%", "90.53%"],
-    "F1-Score": ["72.11%", "84.15%", "90.44%"],
-})
-st.subheader("Accuracy Comparison")
-st.bar_chart({"CNN": 72.29, "MobileNetV3-Small": 84.53, "EfficientNet-B0": 90.53})
-st.success("🏆 EfficientNet-B0 achieved the highest reported accuracy: 90.53%.")
-st.markdown('</div>', unsafe_allow_html=True)
+                face_image = get_largest_face(
+                    image,
+                    faces
+                )
 
-st.markdown('<div class="section">', unsafe_allow_html=True)
-st.header("📘 Project Summary")
+                st.image(
+                    face_image,
+                    caption="Detected driver face",
+                    width=300
+                )
+
+                prediction, confidence, probabilities = \
+                    predict_drowsiness(
+                        face_image
+                    )
+
+                # ------------------------------------------------
+                # RESULT
+                # ------------------------------------------------
+
+                if prediction in [
+                    "Closed",
+                    "yawn"
+                ]:
+
+                    st.error(
+                        f"⚠️ Possible drowsiness: "
+                        f"{prediction}"
+                    )
+
+                    st.warning(
+                        "If you feel tired while driving, "
+                        "stop safely and take a break."
+                    )
+
+                else:
+
+                    st.success(
+                        f"✅ Detected state: "
+                        f"{prediction}"
+                    )
+
+                r1, r2 = st.columns(2)
+
+                r1.metric(
+                    "Prediction",
+                    prediction
+                )
+
+                r2.metric(
+                    "Confidence",
+                    f"{confidence * 100:.2f}%"
+                )
+
+                st.subheader(
+                    "📊 Prediction Probabilities"
+                )
+
+                for class_name, probability in sorted(
+                    zip(
+                        CLASS_NAMES,
+                        probabilities
+                    ),
+                    key=lambda x: x[1],
+                    reverse=True
+                ):
+
+                    st.write(
+                        f"**{class_name}** — "
+                        f"{probability * 100:.2f}%"
+                    )
+
+                    st.progress(
+                        float(probability)
+                    )
+
+        else:
+
+            st.info(
+                "Upload an image or use the camera "
+                "to start detection."
+            )
+
+st.markdown(
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# MODEL PERFORMANCE
+# ============================================================
+
+st.markdown(
+    '<div class="section">',
+    unsafe_allow_html=True
+)
+
+st.header(
+    "📊 Model Performance Comparison"
+)
+
+st.write(
+    "Previously reported evaluation results:"
+)
+
+p1, p2, p3 = st.columns(3)
+
+p1.metric(
+    "CNN",
+    "72.29%"
+)
+
+p2.metric(
+    "MobileNetV3-Small",
+    "84.53%"
+)
+
+p3.metric(
+    "🏆 EfficientNet-B0",
+    "90.53%"
+)
+
+performance_data = {
+
+    "Model": [
+        "CNN",
+        "MobileNetV3-Small",
+        "EfficientNet-B0"
+    ],
+
+    "Accuracy": [
+        "72.29%",
+        "84.53%",
+        "90.53%"
+    ],
+
+    "Precision": [
+        "72.86%",
+        "85.79%",
+        "91.19%"
+    ],
+
+    "Recall": [
+        "72.29%",
+        "84.53%",
+        "90.53%"
+    ],
+
+    "F1-Score": [
+        "72.11%",
+        "84.15%",
+        "90.44%"
+    ]
+}
+
+st.table(
+    performance_data
+)
+
+st.subheader(
+    "Accuracy Comparison"
+)
+
+st.bar_chart(
+    {
+        "CNN": 72.29,
+        "MobileNetV3-Small": 84.53,
+        "EfficientNet-B0": 90.53
+    }
+)
+
+st.success(
+    "🏆 EfficientNet-B0 is currently the best "
+    "reported model with 90.53% accuracy."
+)
+
+st.markdown(
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# ROAD SAFETY
+# ============================================================
+
+st.markdown(
+    '<div class="section">',
+    unsafe_allow_html=True
+)
+
+st.header(
+    "🛡️ Intelligent Road Safety Assistance"
+)
+
+s1, s2, s3 = st.columns(3)
+
+s1.info(
+    "👤 **Face Detection**\n\n"
+    "Checks whether a driver face is present."
+)
+
+s2.info(
+    "👁️ **Drowsiness Analysis**\n\n"
+    "Analyzes the detected face using EfficientNet-B0."
+)
+
+s3.info(
+    "⚠️ **Safety Assistance**\n\n"
+    "Displays an awareness message when "
+    "drowsiness-related patterns are detected."
+)
+
+st.warning(
+    "This is an AI-assisted demonstration system. "
+    "It should not be treated as a replacement for "
+    "a certified vehicle safety system."
+)
+
+st.markdown(
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# PROJECT SUMMARY
+# ============================================================
+
+st.markdown(
+    '<div class="section">',
+    unsafe_allow_html=True
+)
+
+st.header(
+    "📘 Project Summary"
+)
+
 a, b, c, d = st.columns(4)
-a.metric("Best Model", "EfficientNet-B0")
-b.metric("Reported Accuracy", "90.53%")
-c.metric("Classes", "4")
-d.metric("Model Status", "Online" if model is not None else "Offline")
-st.write("Recognized classes: **Closed • Open • no_yawn • yawn**")
-st.info("System flow: Image / Camera → 224×224 preprocessing → EfficientNet-B0 → Prediction → Confidence → Safety message")
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('<div class="footer"><b>DriveGuard AI</b> • AI-Powered Driver Drowsiness Detection & Safety Analytics • College Mini Project</div>', unsafe_allow_html=True)
+
+a.metric(
+    "Model",
+    "EfficientNet-B0"
+)
+
+b.metric(
+    "Reported Accuracy",
+    "90.53%"
+)
+
+c.metric(
+    "Classes",
+    "4"
+)
+
+d.metric(
+    "Status",
+    "Online" if model else "Offline"
+)
+
+st.write(
+    "**Classes:** Closed • Open • no_yawn • yawn"
+)
+
+st.write(
+    "**System Flow:** "
+    "Image / Camera → Face Detection → Face Crop → "
+    "EfficientNet-B0 → Prediction → Confidence → "
+    "Safety Assistance"
+)
+
+st.markdown(
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.markdown(
+    """
+    <div class="footer">
+    <b>DriveGuard AI</b><br>
+    AI Agent for Driver Drowsiness Detection and
+    Intelligent Road Safety Assistance<br>
+    Powered by EfficientNet-B0
+    </div>
+    """,
+    unsafe_allow_html=True
+)

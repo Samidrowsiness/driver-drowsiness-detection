@@ -3,7 +3,6 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 from pathlib import Path
-import cv2
 
 # ============================================================
 # PAGE CONFIG
@@ -85,68 +84,6 @@ st.markdown("""
 
 </style>
 """, unsafe_allow_html=True)
-
-# ============================================================
-# LOAD MODEL
-# ============================================================
-
-@st.cache_resource(show_spinner="Loading EfficientNet-B0...")
-def load_model():
-
-    return tf.keras.models.load_model(
-        MODEL_PATH,
-        compile=False
-    )
-
-
-model = None
-model_error = None
-
-if MODEL_PATH.exists():
-
-    try:
-        model = load_model()
-
-    except Exception as e:
-
-        model_error = str(e)
-
-# ============================================================
-# FACE DETECTOR
-# ============================================================
-
-@st.cache_resource
-def load_face_detector():
-
-    cascade_path = cv2.data.haarcascades + \
-                   "haarcascade_frontalface_default.xml"
-
-    return cv2.CascadeClassifier(cascade_path)
-
-
-face_detector = load_face_detector()
-
-# ============================================================
-# FACE DETECTION FUNCTION
-# ============================================================
-
-def detect_faces(image):
-
-    image_array = np.array(image)
-
-    gray = cv2.cvtColor(
-        image_array,
-        cv2.COLOR_RGB2GRAY
-    )
-
-    faces = face_detector.detectMultiScale(
-        gray,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(80, 80)
-    )
-
-    return faces
 
 
 # ============================================================

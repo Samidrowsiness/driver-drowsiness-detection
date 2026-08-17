@@ -125,23 +125,10 @@ if MODEL_PATH.exists():
 
 st.markdown(
     """
-    <div class="hero">
-
-        <h1>🚗 DriveGuard AI</h1>
-
-        <p>
-        AI Agent for Driver Drowsiness Detection and
-        Intelligent Road Safety Assistance
-        </p>
-
-        <p>
-        <b>
-        EfficientNet-B0 • Drowsiness Detection •
-        Safety Analytics
-        </b>
-        </p>
-
-    </div>
+    <h1 style="text-align:center;">
+    🚗 AI Agent for Driver Drowsiness Detection and
+    Intelligent Road Safety Assistance using EfficientNet-B0
+    </h1>
     """,
     unsafe_allow_html=True
 )
